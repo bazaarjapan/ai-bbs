@@ -218,6 +218,19 @@
   .video-modal-input:focus{outline:none;border-color:var(--color-link);box-shadow:0 0 0 2px rgba(26,115,232,0.15)}
   .video-modal-actions{display:flex;justify-content:flex-end;gap:var(--space-2);margin-top:var(--space-3)}
   .video-modal-hint{margin-top:var(--space-2);font-size:0.75rem;color:var(--color-muted)}
+
+  /* Quill リンク挿入ツールチップをモーダル風に統一 */
+  .ql-tooltip{background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-lg);box-shadow:var(--shadow-lg);padding:var(--space-3);color:var(--color-text);z-index:5000}
+  .ql-tooltip::before{display:block;font-size:0.8rem;color:var(--color-muted);margin-bottom:var(--space-1)}
+  .ql-tooltip input[type="text"]{width:100%;padding:8px 10px;border:1px solid var(--color-border);border-radius:var(--radius-md);font-size:0.9rem;font-family:inherit}
+  .ql-tooltip input[type="text"]:focus{outline:none;border-color:var(--color-link);box-shadow:0 0 0 2px rgba(26,115,232,0.15)}
+  .ql-tooltip .ql-preview{display:block;margin-bottom:var(--space-2);color:var(--color-link);text-decoration:underline;word-break:break-all}
+  .ql-tooltip a.ql-action,
+  .ql-tooltip a.ql-remove{display:inline-flex;align-items:center;justify-content:center;padding:6px 12px;border-radius:var(--radius-sm);font-size:0.78rem;text-decoration:none;line-height:1.2}
+  .ql-tooltip a.ql-action{background-color:var(--color-primary);color:#fff}
+  .ql-tooltip a.ql-action:hover{background-color:var(--color-primary-hover)}
+  .ql-tooltip a.ql-remove{background-color:var(--color-subtle);color:var(--color-secondary);margin-left:6px}
+  .ql-tooltip a.ql-remove:hover{background-color:#e8eaed}
   
   /* レスポンシブデザイン */
   @media (min-width:768px){
