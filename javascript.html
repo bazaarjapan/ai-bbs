@@ -270,6 +270,8 @@
     setTimeout(() => {
       enhanceToolbar(quill, fileHandler);
       enhanceToolbar(editQuill, editFileHandler);
+      setupLinkTooltipCancel(quill);
+      setupLinkTooltipCancel(editQuill);
     }, 200);
 
     // Quillエディタの内容が変更されたときにhidden inputに値を設定
@@ -539,6 +541,31 @@
     editor.clipboard.dangerouslyPasteHTML(range.index, iframeHtml);
     editor.setSelection(range.index + 1);
     return true;
+  }
+
+  /**
+   * リンク挿入ツールチップの「キャンセル」動作を定義
+   * （編集モード時のみ閉じる）
+   */
+  function setupLinkTooltipCancel(editor) {
+    if (!editor || !editor.theme || !editor.theme.tooltip) return;
+    const tooltip = editor.theme.tooltip;
+    const root = tooltip.root;
+    if (!root || root.dataset.cancelBound) return;
+    root.dataset.cancelBound = 'true';
+
+    root.addEventListener('click', (event) => {
+      const target = event.target;
+      const removeButton = target && target.closest ? target.closest('a.ql-remove') : null;
+      if (!removeButton) return;
+      if (!root.classList.contains('ql-editing')) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      if (typeof tooltip.hide === 'function') {
+        tooltip.hide();
+      }
+    });
   }
 
   function openVideoModal(editor) {
