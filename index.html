@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <title>掲示板</title>
+  <base target="_top">
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&family=Noto+Sans+JP:wght@300;400;500;700&display=swap" rel="stylesheet">
+  <!-- プリロード -->
+  <link rel="preload" href="https://cdn.quilljs.com/1.3.6/quill.snow.css" as="style">
+  <link rel="preload" href="https://cdn.quilljs.com/1.3.6/quill.min.js" as="script">
+  <!-- Quill.js のスタイルシートとライブラリを読み込み -->
+  <link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet">
+  <script src="https://cdn.quilljs.com/1.3.6/quill.min.js" defer></script>
+  <?!= getStyleContent() ?>
+</head>
+<body>
+  <div class="container">
+    
+    <div id="login-modal" class="modal">
+      <div class="modal-content">
+        <span class="close">&times;</span>
+        <h2>ログイン</h2>
+        <div class="form-group">
+          <label for="password">パスワード:</label>
+          <input type="password" id="password" class="form-control">
+        </div>
+        <button id="submit-login" class="btn">ログイン</button>
+        <p id="login-error" class="error-message"></p>
+      </div>
+    </div>
+    
+  <!-- 
+    iframeで埋め込む際の推奨設定:
+    <iframe src="アプリのURL" style="width: 100%; height: 100vh; border: none; overflow: hidden;"></iframe>
+    
+    モバイル対応の場合:
+    <iframe src="アプリのURL" style="width: 100%; height: 100vh; border: none; overflow: hidden; max-width: 100%; position: relative;"></iframe>
+  -->
+  <main style="flex: 0 0 auto; overflow: visible;">
+      <!-- 最新情報セクション -->
+      <div id="latest-info-container">
+        <div class="latest-info-header">
+          <h2>最新情報</h2>
+          <div class="display-settings">
+            <label for="posts-per-page" class="display-settings-label">表示件数</label>
+            <select id="posts-per-page" class="display-settings-select">
+              <option value="5">5件</option>
+              <option value="10">10件</option>
+              <option value="20">20件</option>
+              <option value="30">30件</option>
+            </select>
+          </div>
+        </div>
+        <div id="latest-info-list"></div>
+      </div>
+      
+      <div id="posts-container">
+        <div id="loading">投稿を読み込み中...</div>
+        <div id="posts-list"></div>
+        <div id="pagination">
+          <button id="prev-page" class="btn">前の投稿へ</button>
+          <span id="page-info"></span>
+          <button id="next-page" class="btn">次の投稿へ</button>
+        </div>
+      </div>
+    </main>
+    
+    <div id="post-form-container">
+      <div id="auth-status">
+        <button id="login-btn" class="btn">ログイン</button>
+        <span id="logged-in-status" style="display: none;">ログイン中</span>
+        <button id="logout-btn" class="btn btn-secondary" style="display: none;">ログアウト</button>
+      </div>
+      <div class="post-form-header">
+        <h2>新規投稿</h2>
+        <p class="post-form-desc">掲示板に表示される内容を入力してください。</p>
+      </div>
+      <div id="post-form">
+        <div class="form-group">
+          <label for="name">タイトル <span class="required-badge">必須</span></label>
+          <input type="text" id="name" class="form-control" required>
+          <p class="form-help">例: 〇〇についてのお知らせ</p>
+        </div>
+        <div class="form-group">
+          <label for="editor-container">投稿文 <span class="required-badge">必須</span></label>
+          <div id="editor-container" style="min-height: 120px;"></div>
+          <input type="hidden" id="text">
+          <p class="form-help">画像・動画・ファイルの添付も可能です。</p>
+        </div>
+        <div class="form-actions">
+          <button id="submit-post" class="btn btn-primary btn-cta" disabled>
+            <span class="btn-cta-icon">📝</span>
+            投稿する
+          </button>
+          <button id="cancel-edit" class="btn btn-secondary" style="display: none;">編集をキャンセル</button>
+        </div>
+        <p id="post-error" class="error-message"></p>
+      </div>
+    </div>
+    
+    <div id="edit-modal" class="modal">
+      <div class="modal-content">
+        <span class="close">&times;</span>
+        <h2>投稿を編集</h2>
+        <div id="edit-form">
+          <div class="form-group">
+            <label for="edit-name">タイトル:</label>
+            <input type="text" id="edit-name" class="form-control" required>
+          </div>
+          <div class="form-group">
+            <label for="edit-editor-container">投稿文:</label>
+            <div id="edit-editor-container" style="min-height: 120px;"></div>
+            <input type="hidden" id="edit-text">
+          </div>
+          <input type="hidden" id="edit-post-id">
+          <button id="submit-edit" class="btn">更新する</button>
+          <p id="edit-error" class="error-message"></p>
+        </div>
+      </div>
+    </div>
+    
+    <div id="delete-modal" class="modal">
+      <div class="modal-content">
+        <span class="close">&times;</span>
+        <h2>投稿を非表示</h2>
+        <p>本当にこの投稿を非表示にしてよろしいですか？</p>
+        <input type="hidden" id="delete-post-id">
+        <button id="confirm-delete" class="btn btn-danger">非表示にする</button>
+        <button id="cancel-delete" class="btn">キャンセル</button>
+        <p id="delete-error" class="error-message"></p>
+      </div>
+    </div>
+    
+    <div id="notification" class="notification"></div>
+  </div>
+  
+  <?!= getScriptContent() ?>
+</body>
+</html>

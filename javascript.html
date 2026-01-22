@@ -1,0 +1,1504 @@
+<script>
+  // グローバル変数
+  let currentPage = 1;
+  let totalPages = 1;
+  let isLoggedIn = false;
+  let isEditing = false;
+  let currentEditId = null;
+  let quill; // メイン投稿用Quillエディタ
+  let editQuill; // 編集用Quillエディタ
+  let pendingScrollToTop = false;
+  let currentPostsPerPage = null;
+
+  // DOMが読み込まれたら実行
+  document.addEventListener('DOMContentLoaded', function() {
+    // 初期化処理を非同期で実行
+    setTimeout(() => {
+      // Quillエディタを初期化
+      initQuillEditors();
+
+      // イベントリスナーを設定
+      setupEventListeners();
+      
+      // ログイン状態に基づいて新規投稿フォームの表示/非表示を設定
+      updatePostFormVisibility();
+
+      // 表示件数設定を読み込み、その後に一覧を表示
+      loadDisplaySettings();
+    }, 0);
+  });
+  
+  /**
+   * ログイン状態に基づいて新規投稿フォームの表示/非表示を更新
+   */
+  function updatePostFormVisibility() {
+    const postFormContainer = document.getElementById('post-form-container');
+    const postForm = document.getElementById('post-form');
+    const postFormTitle = document.querySelector('#post-form-container h2');
+    
+    if (isLoggedIn) {
+      postFormContainer.style.display = 'block';
+      postForm.style.display = 'block';
+      postFormTitle.style.display = 'block';
+    } else {
+      // コンテナ自体は表示したまま（ログインボタンを表示するため）
+      postFormContainer.style.display = 'block';
+      // 投稿フォームとタイトルだけを非表示
+      postForm.style.display = 'none';
+      postFormTitle.style.display = 'none';
+    }
+  }
+
+  /**
+   * ツールバーの各アイコンにツールチップを付与
+   */
+  function setToolbarTooltips(toolbarContainer) {
+    if (!toolbarContainer) return;
+
+    const buttonLabels = {
+      'ql-bold': '太字',
+      'ql-italic': '斜体',
+      'ql-underline': '下線',
+      'ql-strike': '取り消し線',
+      'ql-blockquote': '引用',
+      'ql-code-block': 'コードブロック',
+      'ql-link': 'リンク',
+      'ql-image': '画像',
+      'ql-video': '動画',
+      'ql-clean': '書式クリア',
+      'ql-file': 'ファイル添付',
+      'ql-generate': '文章を自動生成'
+    };
+
+    const selectLabels = {
+      'ql-header': '見出し',
+      'ql-color': '文字色',
+      'ql-background': '背景色',
+      'ql-align': '配置'
+    };
+
+    toolbarContainer.querySelectorAll('button').forEach((button) => {
+      let title = '';
+
+      if (button.classList.contains('ql-list')) {
+        const value = button.getAttribute('value');
+        title = value === 'ordered' ? '番号付きリスト' : value === 'bullet' ? '箇条書き' : 'リスト';
+      } else if (button.classList.contains('ql-header')) {
+        const value = button.getAttribute('value');
+        title = value ? `見出し${value}` : '見出し';
+      } else {
+        for (const cls of button.classList) {
+          if (buttonLabels[cls]) {
+            title = buttonLabels[cls];
+            break;
+          }
+        }
+      }
+
+      if (!title && button.classList.contains('custom-file-button')) {
+        title = 'ファイルを添付';
+      }
+
+      if (title) {
+        button.setAttribute('title', title);
+        button.setAttribute('aria-label', title);
+      }
+    });
+
+    toolbarContainer.querySelectorAll('select').forEach((select) => {
+      let title = '';
+      for (const cls of select.classList) {
+        if (selectLabels[cls]) {
+          title = selectLabels[cls];
+          break;
+        }
+      }
+      if (title) {
+        select.setAttribute('title', title);
+        select.setAttribute('aria-label', title);
+      }
+    });
+  }
+
+  /**
+   * ツールバーを見やすく整形（挿入系にラベルを付与）
+   */
+  function enhanceToolbar(editor, fileHandlerFn) {
+    if (!editor) return;
+    const toolbar = editor.getModule('toolbar');
+    if (!toolbar || !toolbar.container) return;
+    const container = toolbar.container;
+
+    if (container.classList.contains('toolbar-enhanced')) {
+      return;
+    }
+    container.classList.add('toolbar-enhanced');
+
+    const insertGroup = container.querySelector('.ql-formats:nth-child(7)');
+    if (insertGroup) {
+      insertGroup.classList.add('toolbar-group', 'toolbar-group-insert');
+
+      if (!insertGroup.querySelector('.custom-file-button')) {
+        const fileButton = document.createElement('button');
+        fileButton.type = 'button';
+        fileButton.className = 'toolbar-pill pill-file custom-file-button';
+        fileButton.innerHTML = `
+          <span class="pill-icon">${getPillIconSvg('file')}</span>
+        `;
+        fileButton.addEventListener('click', fileHandlerFn);
+        insertGroup.appendChild(fileButton);
+      }
+
+      const pillMap = [
+        { selector: '.ql-link', icon: getPillIconSvg('link'), className: 'pill-link' },
+        { selector: '.ql-image', icon: getPillIconSvg('image'), className: 'pill-image' },
+        { selector: '.ql-video', icon: getPillIconSvg('video'), className: 'pill-video' },
+        { selector: '.ql-generate', icon: getPillIconSvg('generate'), className: 'pill-generate' }
+      ];
+      pillMap.forEach((item) => {
+        const button = insertGroup.querySelector(item.selector);
+        if (button && !button.classList.contains('toolbar-pill')) {
+          button.classList.add('toolbar-pill', item.className);
+          button.innerHTML = `<span class="pill-icon">${item.icon}</span>`;
+        }
+      });
+    }
+
+    container.querySelectorAll('.ql-formats').forEach((group, index) => {
+      group.classList.add('toolbar-group');
+      if (index < 4) {
+        group.classList.add('toolbar-group-basic');
+      }
+    });
+
+    setToolbarTooltips(container);
+  }
+
+  /**
+   * ピル用アイコン（SVG）を取得
+   */
+  function getPillIconSvg(type) {
+    const icons = {
+      link: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 13a5 5 0 0 1 0-7l2-2a5 5 0 1 1 7 7l-1 1" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M14 11a5 5 0 0 1 0 7l-2 2a5 5 0 1 1-7-7l1-1" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+      image: `<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2" ry="2" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="8.5" cy="10.5" r="1.5" fill="currentColor"/><path d="M21 15l-4-4-4 4-3-3-4 4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+      video: `<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="15" height="14" rx="2" ry="2" fill="none" stroke="currentColor" stroke-width="2"/><polygon points="10,9 15,12 10,15" fill="currentColor"/></svg>`,
+      generate: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5L12 3z" fill="currentColor"/><path d="M19 14l.8 2.2L22 17l-2.2.8L19 20l-.8-2.2L16 17l2.2-.8L19 14z" fill="currentColor"/></svg>`,
+      file: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M14 3v5h5" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>`
+    };
+    return icons[type] || '';
+  }
+
+
+  /**
+   * Quillエディタの初期化
+   */
+  function initQuillEditors() {
+    // カスタムアイコンを作成（ファイル添付用）- 明確なファイルアイコン
+    const fileIcon = document.createElement('span');
+    fileIcon.innerHTML = `
+      <svg viewbox="0 0 24 24" width="18" height="18">
+        <path class="ql-fill" d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z"></path>
+      </svg>
+    `;
+    fileIcon.classList.add('ql-file-icon');
+    
+    // 自動生成用アイコンの作成
+    const generateIcon = document.createElement('span');
+    generateIcon.innerHTML = `
+      <svg viewbox="0 0 24 24" width="18" height="18">
+        <path class="ql-fill" d="M19,3H5C3.89,3 3,3.89 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V5C21,3.89 20.1,3 19,3M17,17H7V7H17V17Z"></path>
+        <path class="ql-fill" d="M7,9H9V11H7V9Z"></path>
+        <path class="ql-fill" d="M7,13H9V15H7V13Z"></path>
+        <path class="ql-fill" d="M11,9H15V11H11V9Z"></path>
+        <path class="ql-fill" d="M11,13H15V15H11V13Z"></path>
+      </svg>
+    `;
+    generateIcon.classList.add('ql-generate-icon');
+    
+    // Quill.jsのアイコンレジストリに登録
+    var icons = Quill.import('ui/icons');
+    icons['file'] = fileIcon.innerHTML;
+    icons['generate'] = generateIcon.innerHTML;
+    
+    // ツールバーオプション - 自動生成ボタンを追加
+    const toolbarOptions = [
+      ['bold', 'italic', 'underline', 'strike'],        // テキスト装飾
+      ['blockquote', 'code-block'],                      // ブロック
+      [{ 'header': 1 }, { 'header': 2 }],                // 見出し
+      [{ 'list': 'ordered'}, { 'list': 'bullet' }],       // リスト
+      [{ 'color': [] }, { 'background': [] }],            // 色
+      [{ 'align': [] }],                                  // 配置
+      ['link', 'image', 'file', 'video', 'generate'],     // リンク、画像、ファイル添付、動画挿入、自動生成
+      ['clean']                                          // フォーマット解除
+    ];
+
+    // メイン投稿用Quillエディタの初期化
+    quill = new Quill('#editor-container', {
+      modules: {
+        toolbar: {
+          container: toolbarOptions,
+          handlers: {
+            'image': imageHandler,
+            'video': videoHandler,
+            'file': fileHandler,
+            'generate': generateTextHandler
+          }
+        }
+      },
+      placeholder: '投稿文を入力してください...',
+      theme: 'snow'
+    });
+
+    // 編集用Quillエディタの初期化
+    editQuill = new Quill('#edit-editor-container', {
+      modules: {
+        toolbar: {
+          container: toolbarOptions,
+          handlers: {
+            'image': editImageHandler,
+            'video': editVideoHandler,
+            'file': editFileHandler,
+            'generate': editGenerateTextHandler
+          }
+        }
+      },
+      placeholder: '投稿文を入力してください...',
+      theme: 'snow'
+    });
+
+    // ツールバーの見た目を整形（ラベル付き）
+    setTimeout(() => {
+      enhanceToolbar(quill, fileHandler);
+      enhanceToolbar(editQuill, editFileHandler);
+    }, 200);
+
+    // Quillエディタの内容が変更されたときにhidden inputに値を設定
+    quill.on('text-change', function() {
+      document.getElementById('text').value = quill.root.innerHTML;
+    });
+
+    editQuill.on('text-change', function() {
+      document.getElementById('edit-text').value = editQuill.root.innerHTML;
+    });
+  }
+
+  /**
+   * 新規投稿用エディタの画像ハンドラ
+   */
+  function imageHandler() {
+    const input = document.createElement('input');
+    input.setAttribute('type', 'file');
+    input.setAttribute('accept', 'image/*');
+    input.click();
+
+    input.onchange = async () => {
+      if (input.files && input.files[0]) {
+        const file = input.files[0];
+
+        // ファイルサイズチェック (10MB以下)
+        if (file.size > 10 * 1024 * 1024) {
+          showNotification('画像サイズは10MB以下にしてください', 'error');
+          return;
+        }
+
+        // 画像ファイルの読み込み
+        const reader = new FileReader();
+        reader.onload = function(e) {
+          const base64Image = e.target.result;
+
+          // ローディング表示
+          const range = quill.getSelection(true);
+          quill.insertText(range.index, '画像をアップロード中...', 'bold', true);
+
+          // Base64エンコードされた画像データをサーバーに送信
+          google.script.run
+            .withSuccessHandler(function(result) {
+              if (result.success) {
+                // アップロード中のテキストを削除
+                quill.deleteText(range.index, '画像をアップロード中...'.length);
+                // 画像を挿入
+                quill.insertEmbed(range.index, 'image', result.imageUrl);
+                // カーソルを画像の後ろに移動
+                quill.setSelection(range.index + 1);
+                showNotification('画像がアップロードされました');
+              } else {
+                // アップロード中のテキストを削除
+                quill.deleteText(range.index, '画像をアップロード中...'.length);
+                showNotification(result.error || '画像のアップロードに失敗しました', 'error');
+              }
+            })
+            .withFailureHandler(function(error) {
+              // アップロード中のテキストを削除
+              quill.deleteText(range.index, '画像をアップロード中...'.length);
+              showNotification('画像のアップロードに失敗しました: ' + error, 'error');
+            })
+            .uploadImageToEditor(base64Image);
+        };
+        reader.readAsDataURL(file);
+      }
+    };
+  }
+
+  /**
+   * 新規投稿用エディタのファイル添付ハンドラ
+   */
+  function fileHandler() {
+    const input = document.createElement('input');
+    input.setAttribute('type', 'file');
+    input.click();
+
+    input.onchange = async () => {
+      if (input.files && input.files[0]) {
+        const file = input.files[0];
+        const fileName = file.name;
+        
+        // ファイルサイズチェック (50MB以下)
+        if (file.size > 50 * 1024 * 1024) {
+          showNotification('ファイルサイズは50MB以下にしてください', 'error');
+          return;
+        }
+
+        // ローディング表示
+        const range = quill.getSelection(true);
+        quill.insertText(range.index, 'ファイルをアップロード中...', 'bold', true);
+
+        // ファイルをFormDataに追加
+        const formData = new FormData();
+        formData.append('file', file);
+
+        // ファイルをGoogleドライブにアップロード
+        const reader = new FileReader();
+        reader.onload = function(e) {
+          const fileData = e.target.result;
+          
+          google.script.run
+            .withSuccessHandler(function(result) {
+              if (result.success) {
+                // アップロード中のテキストを削除
+                quill.deleteText(range.index, 'ファイルをアップロード中...'.length);
+                
+                // ファイルリンクを挿入
+                const fileLink = `<p><a href="${result.fileUrl}" target="_blank" style="display:inline-flex;align-items:center;background:#f1f3f4;padding:4px 8px;border-radius:4px;text-decoration:none;color:#333;margin:5px 0;"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:5px;"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path><polyline points="13 2 13 9 20 9"></polyline></svg>${fileName}</a></p>`;
+                quill.clipboard.dangerouslyPasteHTML(range.index, fileLink);
+                
+                // カーソルを移動
+                quill.setSelection(range.index + 1);
+                showNotification('ファイルがアップロードされました');
+              } else {
+                // アップロード中のテキストを削除
+                quill.deleteText(range.index, 'ファイルをアップロード中...'.length);
+                showNotification(result.error || 'ファイルのアップロードに失敗しました', 'error');
+              }
+            })
+            .withFailureHandler(function(error) {
+              // アップロード中のテキストを削除
+              quill.deleteText(range.index, 'ファイルをアップロード中...'.length);
+              showNotification('ファイルのアップロードに失敗しました: ' + error, 'error');
+            })
+            .uploadFileToDrive(fileName, fileData);
+        };
+        reader.readAsDataURL(file);
+      }
+    };
+  }
+
+  /**
+   * 編集用エディタのファイル添付ハンドラ
+   */
+  function editFileHandler() {
+    const input = document.createElement('input');
+    input.setAttribute('type', 'file');
+    input.click();
+
+    input.onchange = async () => {
+      if (input.files && input.files[0]) {
+        const file = input.files[0];
+        const fileName = file.name;
+        
+        // ファイルサイズチェック (50MB以下)
+        if (file.size > 50 * 1024 * 1024) {
+          showNotification('ファイルサイズは50MB以下にしてください', 'error');
+          return;
+        }
+
+        // ローディング表示
+        const range = editQuill.getSelection(true);
+        editQuill.insertText(range.index, 'ファイルをアップロード中...', 'bold', true);
+
+        // ファイルをGoogleドライブにアップロード
+        const reader = new FileReader();
+        reader.onload = function(e) {
+          const fileData = e.target.result;
+          
+          google.script.run
+            .withSuccessHandler(function(result) {
+              if (result.success) {
+                // アップロード中のテキストを削除
+                editQuill.deleteText(range.index, 'ファイルをアップロード中...'.length);
+                
+                // ファイルリンクを挿入
+                const fileLink = `<p><a href="${result.fileUrl}" target="_blank" style="display:inline-flex;align-items:center;background:#f1f3f4;padding:4px 8px;border-radius:4px;text-decoration:none;color:#333;margin:5px 0;"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:5px;"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path><polyline points="13 2 13 9 20 9"></polyline></svg>${fileName}</a></p>`;
+                editQuill.clipboard.dangerouslyPasteHTML(range.index, fileLink);
+                
+                // カーソルを移動
+                editQuill.setSelection(range.index + 1);
+                showNotification('ファイルがアップロードされました');
+              } else {
+                // アップロード中のテキストを削除
+                editQuill.deleteText(range.index, 'ファイルをアップロード中...'.length);
+                showNotification(result.error || 'ファイルのアップロードに失敗しました', 'error');
+              }
+            })
+            .withFailureHandler(function(error) {
+              // アップロード中のテキストを削除
+              editQuill.deleteText(range.index, 'ファイルをアップロード中...'.length);
+              showNotification('ファイルのアップロードに失敗しました: ' + error, 'error');
+            })
+            .uploadFileToDrive(fileName, fileData);
+        };
+        reader.readAsDataURL(file);
+      }
+    };
+  }
+
+  /**
+   * 編集用エディタの画像ハンドラ
+   */
+  function editImageHandler() {
+    const input = document.createElement('input');
+    input.setAttribute('type', 'file');
+    input.setAttribute('accept', 'image/*');
+    input.click();
+
+    input.onchange = async () => {
+      if (input.files && input.files[0]) {
+        const file = input.files[0];
+
+        // ファイルサイズチェック (10MB以下)
+        if (file.size > 10 * 1024 * 1024) {
+          showNotification('画像サイズは10MB以下にしてください', 'error');
+          return;
+        }
+
+        // 画像ファイルの読み込み
+        const reader = new FileReader();
+        reader.onload = function(e) {
+          const base64Image = e.target.result;
+
+          // ローディング表示
+          const range = editQuill.getSelection(true);
+          editQuill.insertText(range.index, '画像をアップロード中...', 'bold', true);
+
+          // Base64エンコードされた画像データをサーバーに送信
+          google.script.run
+            .withSuccessHandler(function(result) {
+              if (result.success) {
+                // アップロード中のテキストを削除
+                editQuill.deleteText(range.index, '画像をアップロード中...'.length);
+                // 画像を挿入
+                editQuill.insertEmbed(range.index, 'image', result.imageUrl);
+                // カーソルを画像の後ろに移動
+                editQuill.setSelection(range.index + 1);
+                showNotification('画像がアップロードされました');
+              } else {
+                // アップロード中のテキストを削除
+                editQuill.deleteText(range.index, '画像をアップロード中...'.length);
+                showNotification(result.error || '画像のアップロードに失敗しました', 'error');
+              }
+            })
+            .withFailureHandler(function(error) {
+              // アップロード中のテキストを削除
+              editQuill.deleteText(range.index, '画像をアップロード中...'.length);
+              showNotification('画像のアップロードに失敗しました: ' + error, 'error');
+            })
+            .uploadImageToEditor(base64Image);
+        };
+        reader.readAsDataURL(file);
+      }
+    };
+  }
+
+  /**
+   * 動画挿入用ハンドラ
+   */
+  function insertYouTubeVideo(url, editor) {
+    let videoId = '';
+    const regex = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&?]+)/;
+    const match = url.match(regex);
+    if (match) {
+      videoId = match[1];
+    }
+    if (!videoId) {
+      showNotification('有効なYouTubeのURLを入力してください', 'error');
+      return false;
+    }
+    const embedUrl = 'https://www.youtube-nocookie.com/embed/' + videoId;
+    const iframeHtml = `<iframe src="${embedUrl}" width="100%" height="315" frameborder="0" style="max-width: 560px;" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>`;
+    editor.focus();
+    const range = editor.getSelection(true);
+    editor.clipboard.dangerouslyPasteHTML(range.index, iframeHtml);
+    editor.setSelection(range.index + 1);
+    return true;
+  }
+
+  function openVideoModal(editor) {
+    const modal = document.createElement('div');
+    modal.className = 'video-modal-backdrop';
+    modal.innerHTML = `
+      <div class="video-modal-card" role="dialog" aria-modal="true" aria-label="動画を挿入">
+        <div class="video-modal-title">動画を挿入</div>
+        <label class="video-modal-label" for="video-url-input">YouTubeのURL</label>
+        <input id="video-url-input" class="video-modal-input" type="url" placeholder="https://www.youtube.com/watch?v=..." autocomplete="off">
+        <div class="video-modal-actions">
+          <button class="btn btn-secondary video-modal-cancel" type="button">取り消し</button>
+          <button class="btn video-modal-submit" type="button">挿入する</button>
+        </div>
+        <div class="video-modal-hint">YouTubeのURLのみ対応しています</div>
+      </div>
+    `;
+
+    const close = () => {
+      document.removeEventListener('keydown', onKeyDown);
+      if (modal.parentNode) {
+        document.body.removeChild(modal);
+      }
+    };
+
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        close();
+      }
+      if (event.key === 'Enter') {
+        submit();
+      }
+    };
+
+    const submit = () => {
+      const input = modal.querySelector('#video-url-input');
+      const url = input.value.trim();
+      if (!url) {
+        input.focus();
+        showNotification('URLを入力してください', 'error');
+        return;
+      }
+      if (insertYouTubeVideo(url, editor)) {
+        close();
+      }
+    };
+
+    modal.addEventListener('click', (event) => {
+      if (event.target === modal) {
+        close();
+      }
+    });
+
+    modal.querySelector('.video-modal-submit').addEventListener('click', submit);
+    modal.querySelector('.video-modal-cancel').addEventListener('click', close);
+
+    document.body.appendChild(modal);
+    document.addEventListener('keydown', onKeyDown);
+    const input = modal.querySelector('#video-url-input');
+    input.focus();
+  }
+
+  function videoHandler() {
+    openVideoModal(quill);
+  }
+  function editVideoHandler() {
+    openVideoModal(editQuill);
+  }
+
+  /**
+   * イベントリスナーの設定
+   */
+  function setupEventListeners() {
+    const postsPerPageSelect = document.getElementById('posts-per-page');
+    if (postsPerPageSelect) {
+      postsPerPageSelect.addEventListener('change', function() {
+        const value = Number(this.value);
+        if (!value || value === currentPostsPerPage) {
+          return;
+        }
+
+        currentPostsPerPage = value;
+        postsPerPageSelect.value = String(value);
+        postsCache.data = {};
+        postsCache.timestamp = {};
+        currentPage = 1;
+        loadLatestInfo();
+        setTimeout(() => {
+          loadPosts(1);
+        }, 100);
+        showNotification(`表示件数を${value}件に変更しました（この画面のみ）`);
+      });
+    }
+
+    // ページネーションボタン
+    document.getElementById('prev-page').addEventListener('click', function() {
+      if (currentPage > 1) {
+        loadPosts(currentPage - 1);
+      }
+    });
+
+    document.getElementById('next-page').addEventListener('click', function() {
+      if (currentPage < totalPages) {
+        loadPosts(currentPage + 1);
+      }
+    });
+
+    // ログインボタン
+    document.getElementById('login-btn').addEventListener('click', function() {
+      document.getElementById('login-modal').style.display = 'block';
+    });
+
+    // ログアウト
+    document.getElementById('logout-btn').addEventListener('click', function() {
+      isLoggedIn = false;
+      document.getElementById('login-btn').style.display = 'inline-block';
+      document.getElementById('logged-in-status').style.display = 'none';
+      document.getElementById('logout-btn').style.display = 'none';
+      document.getElementById('submit-post').disabled = true;
+      document.getElementById('password').value = '';
+      const editModal = document.getElementById('edit-modal');
+      const deleteModal = document.getElementById('delete-modal');
+      if (editModal) editModal.style.display = 'none';
+      if (deleteModal) deleteModal.style.display = 'none';
+      updatePostFormVisibility();
+      loadPosts(currentPage);
+      showNotification('ログアウトしました');
+    });
+
+    // ログインモーダルを閉じる
+    document.querySelectorAll('.modal .close').forEach(function(closeBtn) {
+      closeBtn.addEventListener('click', function() {
+        this.closest('.modal').style.display = 'none';
+      });
+    });
+
+    // ログイン送信
+    document.getElementById('submit-login').addEventListener('click', function() {
+      const password = document.getElementById('password').value;
+      if (!password) {
+        showError('login-error', 'パスワードを入力してください');
+        return;
+      }
+
+      // パスワード検証
+      google.script.run
+        .withSuccessHandler(function(result) {
+          if (result.valid) {
+            isLoggedIn = true;
+            document.getElementById('login-modal').style.display = 'none';
+            document.getElementById('login-btn').style.display = 'none';
+            document.getElementById('logged-in-status').style.display = 'inline';
+            document.getElementById('logout-btn').style.display = 'inline-block';
+            document.getElementById('submit-post').disabled = false;
+            showNotification('ログインしました');
+
+            // 新規投稿フォームを表示
+            updatePostFormVisibility();
+
+            // ログイン成功時に投稿一覧を再読み込み（修正・削除ボタンを表示するため）
+            loadPosts(currentPage);
+          } else {
+            showError('login-error', 'パスワードが正しくありません');
+          }
+        })
+        .withFailureHandler(function(error) {
+          showError('login-error', '認証エラー: ' + error);
+        })
+        .verifyPassword(password);
+    });
+
+    // 投稿フォーム送信
+    document.getElementById('submit-post').addEventListener('click', function() {
+      if (!isLoggedIn) {
+        showNotification('投稿するにはログインしてください', 'error');
+        return;
+      }
+
+      const submitBtn = this;
+      const name = document.getElementById('name').value.trim();
+      const text = document.getElementById('text').value || quill.root.innerHTML;
+      const hasText = quill.getText().trim().length > 0;
+      const hasMedia = quill.root.querySelector('img, video, iframe, a') !== null;
+
+      if (!name || (!hasText && !hasMedia)) {
+        showError('post-error', 'タイトルと投稿文は必須です');
+        return;
+      }
+
+      // ボタンを非アクティブにして投稿中表示
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = '<span class="spinner"></span> 投稿中...';
+
+      // 投稿データの準備
+      const postData = {
+        name: name,
+        text: text
+      };
+
+      // パスワードの取得
+      const password = document.getElementById('password').value;
+
+      // 投稿処理完了時の共通ハンドラ
+      const successHandler = function(result) {
+        // ボタンを元に戻す
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = '投稿する';
+        handlePostResult(result);
+      };
+
+      const errorHandler = function(error) {
+        // ボタンを元に戻す
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = '投稿する';
+        showError('post-error', '投稿エラー: ' + error);
+      };
+
+      // 投稿を送信
+      google.script.run
+        .withSuccessHandler(successHandler)
+        .withFailureHandler(errorHandler)
+        .savePost(postData, password);
+    });
+
+    // 編集フォーム送信
+    document.getElementById('submit-edit').addEventListener('click', function() {
+      if (!isLoggedIn) {
+        showNotification('編集するにはログインしてください', 'error');
+        return;
+      }
+
+      const submitBtn = this;
+      const postId = document.getElementById('edit-post-id').value;
+      const name = document.getElementById('edit-name').value.trim();
+      const text = document.getElementById('edit-text').value || editQuill.root.innerHTML;
+      const hasText = editQuill.getText().trim().length > 0;
+      const hasMedia = editQuill.root.querySelector('img, video, iframe, a') !== null;
+
+      if (!name || (!hasText && !hasMedia)) {
+        showError('edit-error', 'タイトルと投稿文は必須です');
+        return;
+      }
+
+      // ボタンを非アクティブにして更新中表示
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = '<span class="spinner"></span> 更新中...';
+
+      // 投稿データの準備
+      const postData = {
+        id: postId,
+        name: name,
+        text: text
+      };
+
+      // パスワードの取得
+      const password = document.getElementById('password').value;
+
+      // 更新処理完了時の共通ハンドラ
+      const successHandler = function(result) {
+        // ボタンを元に戻す
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = '更新する';
+        handleEditResult(result);
+      };
+
+      const errorHandler = function(error) {
+        // ボタンを元に戻す
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = '更新する';
+        showError('edit-error', '更新エラー: ' + error);
+      };
+
+      // 更新を送信
+      google.script.run
+        .withSuccessHandler(successHandler)
+        .withFailureHandler(errorHandler)
+        .updatePost(postData, password);
+    });
+
+    // 削除確認
+    document.getElementById('confirm-delete').addEventListener('click', function() {
+      if (!isLoggedIn) {
+        showNotification('非表示にするにはログインしてください', 'error');
+        return;
+      }
+
+      const submitBtn = this;
+      const postId = document.getElementById('delete-post-id').value;
+      const password = document.getElementById('password').value;
+
+      // ボタンを非アクティブにして非表示処理中表示
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = '<span class="spinner"></span> 処理中...';
+
+      google.script.run
+        .withSuccessHandler(function(result) {
+          // ボタンを元に戻す
+          submitBtn.disabled = false;
+          submitBtn.innerHTML = '非表示にする';
+
+          if (result.success) {
+            document.getElementById('delete-modal').style.display = 'none';
+            showNotification('投稿が非表示になりました');
+            loadPosts(currentPage);
+          } else {
+            showError('delete-error', result.error || '非表示処理に失敗しました');
+          }
+        })
+        .withFailureHandler(function(error) {
+          // ボタンを元に戻す
+          submitBtn.disabled = false;
+          submitBtn.innerHTML = '非表示にする';
+          showError('delete-error', '非表示処理エラー: ' + error);
+        })
+        .deletePost(postId, password);
+    });
+
+    // 削除キャンセル
+    document.getElementById('cancel-delete').addEventListener('click', function() {
+      document.getElementById('delete-modal').style.display = 'none';
+    });
+  }
+
+  // 投稿データのキャッシュ
+  const postsCache = {
+    data: {},
+    timestamp: {},
+    // キャッシュの有効期間（5分 = 300000ミリ秒）
+    maxAge: 300000
+  };
+
+  /**
+   * 投稿を読み込む
+   */
+  function loadPosts(page) {
+    document.getElementById('loading').style.display = 'block';
+    document.getElementById('posts-list').innerHTML = '';
+
+    // キャッシュチェック
+    const cacheKey = `posts_page_${page}_${currentPostsPerPage || 'default'}`;
+    const now = Date.now();
+    if (postsCache.data[cacheKey] && (now - postsCache.timestamp[cacheKey] < postsCache.maxAge)) {
+      // キャッシュデータを使用
+      handlePostsResult(postsCache.data[cacheKey], page);
+      return;
+    }
+
+    google.script.run
+      .withSuccessHandler(function(result) {
+        // キャッシュに保存
+        postsCache.data[cacheKey] = result;
+        postsCache.timestamp[cacheKey] = Date.now();
+        
+        handlePostsResult(result, page);
+      })
+      .withFailureHandler(function(error) {
+        document.getElementById('loading').style.display = 'none';
+        showNotification('投稿の読み込みに失敗しました: ' + error, 'error');
+      })
+      .getPosts(page, currentPostsPerPage || null);
+  }
+
+  /**
+   * 投稿データの処理
+   */
+  function handlePostsResult(result, page) {
+    document.getElementById('loading').style.display = 'none';
+
+    if (result.error) {
+      showNotification(result.error, 'error');
+      return;
+    }
+
+    currentPage = result.pagination.currentPage;
+    totalPages = result.pagination.totalPages;
+
+    // ページ情報を更新
+    document.getElementById('page-info').textContent =
+      `${currentPage} / ${totalPages} ページ (全 ${result.pagination.totalPosts} 件)`;
+
+    // 前へ・次へボタンの有効/無効を設定
+    document.getElementById('prev-page').disabled = currentPage <= 1;
+    document.getElementById('next-page').disabled = currentPage >= totalPages;
+
+    // 投稿を表示
+    const postsContainer = document.getElementById('posts-list');
+
+    if (result.posts.length === 0) {
+      postsContainer.innerHTML = '<p class="no-posts">投稿がありません</p>';
+      return;
+    }
+
+    // 最新情報は別途読み込むため、ここでは読み込まない
+
+    // DocumentFragment を使用してDOM操作を最適化
+    const fragment = document.createDocumentFragment();
+    result.posts.forEach(function(post) {
+      const postElement = createPostElement(post);
+      fragment.appendChild(postElement);
+    });
+    postsContainer.appendChild(fragment);
+
+    if (pendingScrollToTop && page === 1) {
+      pendingScrollToTop = false;
+      const postsSection = document.getElementById('posts-container');
+      if (postsSection) {
+        postsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }
+  }
+
+  /**
+   * 表示件数を読み込む
+   */
+  function loadDisplaySettings() {
+    const postsPerPageSelect = document.getElementById('posts-per-page');
+    google.script.run
+      .withSuccessHandler(function(result) {
+        if (result && result.postsPerPage) {
+          currentPostsPerPage = Number(result.postsPerPage);
+          if (postsPerPageSelect) {
+            postsPerPageSelect.value = String(currentPostsPerPage);
+          }
+        }
+
+        // 最新情報を先に読み込む
+        loadLatestInfo();
+        // 少し遅延させて投稿一覧を読み込む
+        setTimeout(() => {
+          loadPosts(currentPage);
+        }, 100);
+      })
+      .withFailureHandler(function(error) {
+        console.error('表示件数の取得に失敗しました:', error);
+        // 失敗時も通常表示
+        loadLatestInfo();
+        setTimeout(() => {
+          loadPosts(currentPage);
+        }, 100);
+      })
+      .getDisplaySettings();
+  }
+
+  /**
+   * HTMLをサニタイズする関数
+   */
+  function sanitizeHTML(html) {
+    const temp = document.createElement('div');
+    temp.innerHTML = html;
+    return temp.innerHTML;
+  }
+
+  /**
+   * 投稿要素を作成
+   */
+  function createPostElement(post) {
+    const postDiv = document.createElement('div');
+    postDiv.className = 'post';
+    postDiv.dataset.id = post.id;
+
+    // 投稿ヘッダー（タイトルと日時）
+    const header = document.createElement('div');
+    header.className = 'post-header';
+
+    const titleSpan = document.createElement('span');
+    titleSpan.className = 'post-title';
+    titleSpan.textContent = post.name;
+
+    // 1ヶ月以内の投稿にはNEWバッジを表示
+    const postDate = new Date(post.createdAt);
+    const now = new Date();
+    const oneMonthAgo = new Date();
+    oneMonthAgo.setMonth(now.getMonth() - 1);
+
+    if (postDate > oneMonthAgo) {
+      const newBadge = document.createElement('span');
+      newBadge.className = 'post-new-badge';
+      newBadge.textContent = 'NEW';
+      titleSpan.appendChild(newBadge);
+    }
+
+    const dateSpan = document.createElement('span');
+    dateSpan.className = 'post-date';
+    dateSpan.textContent = post.createdAt;
+
+    if (post.updatedAt && post.updatedAt !== post.createdAt) {
+      const updateSpan = document.createElement('span');
+      updateSpan.className = 'post-updated';
+      updateSpan.textContent = `(更新: ${post.updatedAt})`;
+      dateSpan.appendChild(updateSpan);
+    }
+
+    header.appendChild(titleSpan);
+    header.appendChild(dateSpan);
+
+    // 投稿内容
+    const content = document.createElement('div');
+    content.className = 'post-content';
+
+    // テキストコンテナ
+    const textContainer = document.createElement('div');
+    textContainer.className = 'post-text-container';
+
+    const text = document.createElement('div');
+    text.className = 'post-text';
+    text.innerHTML = sanitizeHTML(post.text);
+    textContainer.appendChild(text);
+
+    // テキストコンテナを追加
+    content.appendChild(textContainer);
+
+    // 操作ボタン
+    const actions = document.createElement('div');
+    actions.className = 'post-actions';
+
+    // ログインしている場合のみ修正・削除ボタンを表示
+    if (isLoggedIn) {
+      const editBtn = document.createElement('button');
+      editBtn.className = 'btn btn-edit';
+      editBtn.textContent = '修正';
+      editBtn.addEventListener('click', function() {
+        openEditModal(post);
+      });
+
+      const deleteBtn = document.createElement('button');
+      deleteBtn.className = 'btn btn-delete';
+      deleteBtn.textContent = '非表示';
+      deleteBtn.addEventListener('click', function() {
+        openDeleteModal(post.id);
+      });
+
+      actions.appendChild(editBtn);
+      actions.appendChild(deleteBtn);
+    }
+
+    // 要素を組み立て
+    postDiv.appendChild(header);
+    postDiv.appendChild(content);
+    postDiv.appendChild(actions);
+
+    return postDiv;
+  }
+
+  /**
+   * 編集モーダルを開く
+   */
+  function openEditModal(post) {
+    document.getElementById('edit-post-id').value = post.id;
+    document.getElementById('edit-name').value = post.name;
+    document.getElementById('edit-text').value = post.text;
+    editQuill.root.innerHTML = post.text;
+
+    // エラーメッセージをクリア
+    document.getElementById('edit-error').textContent = '';
+
+    // モーダルを表示
+    document.getElementById('edit-modal').style.display = 'block';
+  }
+
+  /**
+   * 削除モーダルを開く
+   */
+  function openDeleteModal(postId) {
+    document.getElementById('delete-post-id').value = postId;
+    document.getElementById('delete-error').textContent = '';
+    document.getElementById('delete-modal').style.display = 'block';
+  }
+
+  /**
+   * 投稿結果の処理
+   */
+  function handlePostResult(result) {
+    if (result.success) {
+      // フォームをリセット
+      document.getElementById('name').value = '';
+      document.getElementById('text').value = '';
+      quill.root.innerHTML = '';
+      document.getElementById('post-error').textContent = '';
+
+      showNotification('投稿が保存されました');
+      pendingScrollToTop = true;
+      
+      // キャッシュをクリア（最新データを確実に取得するため）
+      postsCache.data = {};
+      postsCache.timestamp = {};
+      
+      // 最新情報を先に読み込み
+      loadLatestInfo();
+      
+      // 少し遅延させて投稿一覧を読み込む（最新情報が表示された後に投稿一覧を更新）
+      setTimeout(() => {
+        loadPosts(1); // 最新の投稿を表示するため1ページ目を読み込む
+      }, 100);
+    } else {
+      showError('post-error', result.error || '投稿に失敗しました');
+    }
+  }
+
+  /**
+   * 編集結果の処理
+   */
+  function handleEditResult(result) {
+    if (result.success) {
+      document.getElementById('edit-modal').style.display = 'none';
+      showNotification('投稿が更新されました');
+      
+      // キャッシュをクリア（最新データを確実に取得するため）
+      postsCache.data = {};
+      postsCache.timestamp = {};
+      
+      // 最新情報を更新
+      loadLatestInfo();
+      
+      // 少し遅延させて投稿一覧を読み込む
+      setTimeout(() => {
+        loadPosts(currentPage); // 現在のページを再読み込み
+      }, 100);
+    } else {
+      showError('edit-error', result.error || '更新に失敗しました');
+    }
+  }
+
+  /**
+   * エラーメッセージを表示
+   */
+  function showError(elementId, message) {
+    const errorElement = document.getElementById(elementId);
+    errorElement.textContent = message;
+    errorElement.style.display = 'block';
+
+    // 3秒後に非表示
+    setTimeout(function() {
+      errorElement.style.display = 'none';
+    }, 3000);
+  }
+
+  /**
+   * 通知を表示
+   */
+  function showNotification(message, type = 'success') {
+    const notification = document.getElementById('notification');
+    notification.textContent = message;
+    notification.className = `notification ${type}`;
+    notification.style.display = 'block';
+
+    // 3秒後に非表示
+    setTimeout(function() {
+      notification.style.display = 'none';
+    }, 3000);
+  }
+
+  /**
+   * 最新情報を読み込む
+   */
+  function loadLatestInfo() {
+    // キャッシュチェック
+    const cacheKey = `latest_info_${currentPostsPerPage || 'default'}`;
+    const now = Date.now();
+    if (postsCache.data[cacheKey] && (now - postsCache.timestamp[cacheKey] < postsCache.maxAge)) {
+      // キャッシュデータを使用
+      handleLatestInfoResult(postsCache.data[cacheKey]);
+      return;
+    }
+
+    // 最新の投稿を取得（表示フラグが1の投稿のみ、件数は環境設定シートのB3から取得）
+    google.script.run
+      .withSuccessHandler(function(result) {
+        // キャッシュに保存
+        postsCache.data[cacheKey] = result;
+        postsCache.timestamp[cacheKey] = Date.now();
+        
+        handleLatestInfoResult(result);
+      })
+      .withFailureHandler(function(error) {
+        console.error('最新情報の取得に失敗しました:', error);
+        // エラー時は空の結果を表示
+        handleLatestInfoResult({
+          posts: [],
+          pagination: {
+            currentPage: 1,
+            totalPages: 0,
+            totalPosts: 0
+          }
+        });
+      })
+      .getPosts(1, currentPostsPerPage || null); // 1ページ目、件数は環境設定シートのB3から取得
+  }
+
+  /**
+   * 最新情報データの処理
+   */
+  function handleLatestInfoResult(result) {
+    if (result.error) {
+      console.error('最新情報の取得に失敗しました:', result.error);
+      return;
+    }
+
+    const latestInfoList = document.getElementById('latest-info-list');
+    latestInfoList.innerHTML = '';
+
+    // 投稿がない場合
+    if (result.posts.length === 0) {
+      latestInfoList.innerHTML = '<p>投稿がありません</p>';
+      return;
+    }
+
+    // 環境設定シートのB3セルの値（表示件数）と同じ件数を表示
+    // result.postsは既に環境設定の表示件数でフィルタリングされているので、そのまま使用
+    const latestPosts = result.posts;
+
+    // DocumentFragment を使用してDOM操作を最適化
+    const fragment = document.createDocumentFragment();
+    latestPosts.forEach(function(post) {
+      const infoItem = createLatestInfoItem(post);
+      fragment.appendChild(infoItem);
+    });
+    latestInfoList.appendChild(fragment);
+  }
+
+  /**
+   * Markdownテキストを簡易的にHTMLに変換する関数
+   */
+  function markdownToHtml(markdown) {
+    if (!markdown) return '';
+    
+    let html = markdown;
+    
+    // 見出し (h1, h2, h3)
+    html = html.replace(/^### (.*$)/gm, '<h3>$1</h3>');
+    html = html.replace(/^## (.*$)/gm, '<h2>$1</h2>');
+    html = html.replace(/^# (.*$)/gm, '<h1>$1</h1>');
+    
+    // 強調 (太字と斜体)
+    html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+    html = html.replace(/\*(.*?)\*/g, '<em>$1</em>');
+    
+    // リスト
+    // 番号付きリスト
+    let hasOrderedList = /^\d+\. /gm.test(html);
+    if (hasOrderedList) {
+      html = html.replace(/^\d+\. (.*$)/gm, '<li>$1</li>');
+      html = html.replace(/<li>(.*)<\/li>(?!\n<li>)/g, '<ol><li>$1</li></ol>');
+      html = html.replace(/<\/ol>\n<ol>/g, '');
+    }
+    
+    // 箇条書きリスト
+    let hasUnorderedList = /^- /gm.test(html);
+    if (hasUnorderedList) {
+      html = html.replace(/^- (.*$)/gm, '<li>$1</li>');
+      html = html.replace(/<li>(.*)<\/li>(?!\n<li>)/g, '<ul><li>$1</li></ul>');
+      html = html.replace(/<\/ul>\n<ul>/g, '');
+    }
+    
+    // 引用
+    html = html.replace(/^> (.*$)/gm, '<blockquote>$1</blockquote>');
+    
+    // 改行をpタグに変換
+    html = html.replace(/^(?!<[a-z][a-z0-9]*>)(.+)$/gm, '<p>$1</p>');
+    
+    // 連続する空行を削除
+    html = html.replace(/\n\n+/g, '\n\n');
+    
+    return html;
+  }
+
+  /**
+   * 新規投稿用エディタの自動生成ハンドラ
+   */
+  function generateTextHandler() {
+    // エディタの選択範囲または全テキストを取得
+    const range = quill.getSelection() || { index: 0, length: quill.getLength() };
+    let inputText = '';
+    
+    if (range.length > 0) {
+      // 選択範囲がある場合はその範囲のテキストを取得
+      inputText = quill.getText(range.index, range.length);
+    } else {
+      // 選択範囲がない場合は全テキストを取得
+      inputText = quill.getText(0, quill.getLength());
+    }
+    
+    // 入力テキストが空の場合は処理しない
+    if (!inputText.trim()) {
+      showNotification('テキストを入力または選択してください', 'error');
+      return;
+    }
+    
+    // ローディング表示
+    const originalText = quill.getText(range.index, range.length);
+    const loadingText = '文章を生成中...';
+    
+    if (range.length > 0) {
+      quill.deleteText(range.index, range.length);
+    }
+    quill.insertText(range.index, loadingText, 'bold', true);
+    
+    // GASの生成処理を呼び出し
+    google.script.run
+      .withSuccessHandler(function(result) {
+        // ローディングテキストを削除
+        quill.deleteText(range.index, loadingText.length);
+        
+        if (result && typeof result === 'string') {
+          // 生成されたテキストがMarkdown形式かどうかを確認
+          const isMarkdown = /(\*\*.*\*\*|^#+ |^- |^> |^\d+\. )/m.test(result);
+          
+          if (isMarkdown) {
+            // Markdown形式の場合はHTMLに変換してから挿入
+            const html = markdownToHtml(result.trim());
+            quill.clipboard.dangerouslyPasteHTML(range.index, html);
+          } else {
+            // 通常のテキストとして挿入
+            quill.insertText(range.index, result.trim());
+          }
+          
+          showNotification('文章が生成されました');
+        } else {
+          // エラーが返ってきた場合は元のテキストを戻す
+          quill.insertText(range.index, originalText);
+          showNotification('文章の生成に失敗しました', 'error');
+        }
+      })
+      .withFailureHandler(function(error) {
+        // ローディングテキストを削除して元のテキストを戻す
+        quill.deleteText(range.index, loadingText.length);
+        quill.insertText(range.index, originalText);
+        showNotification('文章の生成に失敗しました: ' + error, 'error');
+      })
+      .generateText(inputText);
+  }
+  
+  /**
+   * 編集用エディタの自動生成ハンドラ
+   */
+  function editGenerateTextHandler() {
+    // エディタの選択範囲または全テキストを取得
+    const range = editQuill.getSelection() || { index: 0, length: editQuill.getLength() };
+    let inputText = '';
+    
+    if (range.length > 0) {
+      // 選択範囲がある場合はその範囲のテキストを取得
+      inputText = editQuill.getText(range.index, range.length);
+    } else {
+      // 選択範囲がない場合は全テキストを取得
+      inputText = editQuill.getText(0, editQuill.getLength());
+    }
+    
+    // 入力テキストが空の場合は処理しない
+    if (!inputText.trim()) {
+      showNotification('テキストを入力または選択してください', 'error');
+      return;
+    }
+    
+    // ローディング表示
+    const originalText = editQuill.getText(range.index, range.length);
+    const loadingText = '文章を生成中...';
+    
+    if (range.length > 0) {
+      editQuill.deleteText(range.index, range.length);
+    }
+    editQuill.insertText(range.index, loadingText, 'bold', true);
+    
+    // GASの生成処理を呼び出し
+    google.script.run
+      .withSuccessHandler(function(result) {
+        // ローディングテキストを削除
+        editQuill.deleteText(range.index, loadingText.length);
+        
+        if (result && typeof result === 'string') {
+          // 生成されたテキストがMarkdown形式かどうかを確認
+          const isMarkdown = /(\*\*.*\*\*|^#+ |^- |^> |^\d+\. )/m.test(result);
+          
+          if (isMarkdown) {
+            // Markdown形式の場合はHTMLに変換してから挿入
+            const html = markdownToHtml(result.trim());
+            editQuill.clipboard.dangerouslyPasteHTML(range.index, html);
+          } else {
+            // 通常のテキストとして挿入
+            editQuill.insertText(range.index, result.trim());
+          }
+          
+          showNotification('文章が生成されました');
+        } else {
+          // エラーが返ってきた場合は元のテキストを戻す
+          editQuill.insertText(range.index, originalText);
+          showNotification('文章の生成に失敗しました', 'error');
+        }
+      })
+      .withFailureHandler(function(error) {
+        // ローディングテキストを削除して元のテキストを戻す
+        editQuill.deleteText(range.index, loadingText.length);
+        editQuill.insertText(range.index, originalText);
+        showNotification('文章の生成に失敗しました: ' + error, 'error');
+      })
+      .generateText(inputText);
+  }
+  
+  /**
+   * 最新情報アイテムを作成
+   */
+  function createLatestInfoItem(post) {
+    const item = document.createElement('div');
+    item.className = 'latest-info-item';
+
+    // タイトル（クリックで対応する投稿にスクロール）
+    const title = document.createElement('a');
+    title.className = 'latest-info-title';
+    title.textContent = post.name;
+    title.href = 'javascript:void(0)';
+    title.addEventListener('click', function() {
+      // 対応する投稿を探してスクロール
+      const postElement = document.querySelector(`.post[data-id="${post.id}"]`);
+      if (postElement) {
+        postElement.scrollIntoView({ behavior: 'smooth' });
+        // ハイライト効果
+        postElement.style.backgroundColor = '#fff8e1';
+        setTimeout(function() {
+          postElement.style.backgroundColor = '';
+          postElement.style.transition = 'background-color 1s';
+        }, 100);
+      } else {
+        // 現在のページに投稿がない場合は1ページ目を読み込む
+        loadPosts(1);
+        // 少し遅延を入れてスクロール
+        setTimeout(function() {
+          const newPostElement = document.querySelector(`.post[data-id="${post.id}"]`);
+          if (newPostElement) {
+            newPostElement.scrollIntoView({ behavior: 'smooth' });
+            // ハイライト効果
+            newPostElement.style.backgroundColor = '#fff8e1';
+            setTimeout(function() {
+              newPostElement.style.backgroundColor = '';
+              newPostElement.style.transition = 'background-color 1s';
+            }, 100);
+          }
+        }, 500);
+      }
+    });
+
+    // 1ヶ月以内の投稿にはNEWバッジを表示
+    const postDate = new Date(post.createdAt);
+    const now = new Date();
+    const oneMonthAgo = new Date();
+    oneMonthAgo.setMonth(now.getMonth() - 1);
+
+    if (postDate > oneMonthAgo) {
+      const newBadge = document.createElement('span');
+      newBadge.className = 'latest-info-new';
+      newBadge.textContent = 'NEW';
+      title.appendChild(newBadge);
+    }
+
+    // 投稿日時
+    const date = document.createElement('span');
+    date.className = 'latest-info-date';
+    date.textContent = post.createdAt;
+
+    item.appendChild(title);
+    item.appendChild(date);
+
+    return item;
+  }
+</script>

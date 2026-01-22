@@ -1,0 +1,280 @@
+<style>
+  /* クリティカルCSS - 最初に読み込まれる重要なスタイル */
+  :root{
+    --font-sans:'Roboto','Noto Sans JP', sans-serif;
+    --color-bg:#fff;
+    --color-surface:#fff;
+    --color-text:#202124;
+    --color-muted:#5f6368;
+    --color-border:#e0e0e0;
+    --color-border-subtle:#e9ecef;
+    --color-subtle:#f1f3f4;
+    --color-link:#1a73e8;
+    --color-link-hover:#1967d2;
+    --color-primary:#1a73e8;
+    --color-primary-hover:#1967d2;
+    --color-primary-active:#185abc;
+    --color-secondary:#5f6368;
+    --color-secondary-hover:#3c4043;
+    --color-danger:#d93025;
+    --color-danger-hover:#c5221f;
+    --color-success:#1e8e3e;
+    --radius-sm:4px;
+    --radius-md:6px;
+    --radius-lg:8px;
+    --shadow-sm:0 1px 2px rgba(0,0,0,0.06);
+    --shadow-md:0 2px 4px rgba(0,0,0,0.08);
+    --shadow-lg:0 8px 24px rgba(0,0,0,0.18);
+    --space-1:4px;
+    --space-2:8px;
+    --space-3:12px;
+    --space-4:16px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{width:100%;height:100%;margin:0;padding:0;overflow:auto}
+  body{font-family:var(--font-sans);line-height:1.6;color:var(--color-text);background-color:var(--color-bg);font-size:16px}
+  a{color:var(--color-link)}
+  a:hover{color:var(--color-link-hover)}
+  .container{width:100%;height:auto;min-height:100vh;padding:0 var(--space-2) var(--space-3) var(--space-2);margin:0 auto;display:flex;flex-direction:column}
+  
+  /* メインコンテンツ */
+  main{display:flex;flex-direction:column;margin-bottom:var(--space-3)}
+  
+  /* 最新情報セクション */
+  #latest-info-container{background-color:var(--color-surface);border-radius:0 0 var(--radius-md) var(--radius-md);padding:var(--space-2) var(--space-3);margin-bottom:var(--space-3);border:1px solid var(--color-border);box-shadow:var(--shadow-sm)}
+  #latest-info-container h2{font-size:1rem;color:var(--color-text)}
+  .latest-info-header{display:flex;align-items:center;justify-content:space-between;gap:var(--space-2);margin-bottom:var(--space-2);padding-bottom:var(--space-2);border-bottom:1px solid var(--color-border-subtle)}
+  .display-settings{display:flex;align-items:center;gap:var(--space-1)}
+  .display-settings-label{font-size:0.75rem;color:var(--color-muted)}
+  .display-settings-select{padding:4px 8px;border:1px solid var(--color-border);border-radius:var(--radius-sm);font-size:0.75rem;background:var(--color-surface);color:var(--color-text)}
+  .display-settings-select:focus{outline:none;border-color:var(--color-link);box-shadow:0 0 0 2px rgba(26,115,232,0.12)}
+  .latest-info-item{display:flex;justify-content:space-between;align-items:center;padding:var(--space-1) 0;border-bottom:1px solid var(--color-subtle)}
+  .latest-info-title{font-weight:500;color:var(--color-link);cursor:pointer;text-decoration:none;display:flex;align-items:center;font-size:0.85rem}
+  .latest-info-title:hover{text-decoration:underline}
+  .latest-info-new{display:inline-block;margin-left:5px;color:var(--color-danger);font-size:0.7rem;font-weight:bold}
+  .latest-info-date{color:var(--color-muted);font-size:0.75rem}
+  
+  /* 投稿一覧 */
+  #posts-container{margin-bottom:var(--space-3)}
+  #loading{text-align:center;padding:var(--space-3);color:var(--color-muted);font-size:0.85rem}
+  .no-posts{text-align:center;padding:var(--space-3);color:var(--color-muted);background-color:var(--color-surface);border-radius:var(--radius-md);border:1px solid var(--color-border);box-shadow:var(--shadow-sm);font-size:0.85rem}
+  
+  /* 投稿スタイル */
+  .post{background-color:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-md);padding:var(--space-3);margin-bottom:var(--space-2);box-shadow:var(--shadow-sm);will-change:box-shadow}
+  .post:hover{box-shadow:var(--shadow-md)}
+  .post-header{display:flex;justify-content:space-between;margin-bottom:var(--space-2);font-size:0.85rem}
+  .post-title{font-weight:bold;color:var(--color-text);font-size:1rem}
+  .post-new-badge{display:inline-block;margin-left:4px;color:var(--color-danger);font-size:0.65rem;font-weight:bold;vertical-align:middle}
+  .post-date{color:var(--color-muted);font-size:0.75rem}
+  .post-updated{margin-left:3px;color:#9aa0a6}
+  .post-content{margin-bottom:var(--space-2);display:flex;flex-direction:column;align-items:stretch}
+  .post-text-container{width:100%;min-width:0}
+  .post-text{margin-bottom:6px;word-break:break-word;text-align:left}
+  
+  /* Quillコンテンツのスタイル調整 */
+  .post-text,
+  .ql-editor{line-height:1.4;font-size:0.9rem;color:var(--color-text)}
+  .post-text p,
+  .ql-editor p{margin-bottom:0.4em}
+  .post-text h1,.post-text h2,
+  .ql-editor h1,.ql-editor h2{margin:0.4em 0;font-size:1.1rem}
+  .post-text ul,.post-text ol,
+  .ql-editor ul,.ql-editor ol{padding-left:1.2em;margin-bottom:0.4em}
+  .post-text blockquote,
+  .ql-editor blockquote{border-left:2px solid var(--color-border);padding-left:8px;color:var(--color-muted);margin:0.4em 0}
+  .post-text pre,
+  .ql-editor pre{background-color:var(--color-subtle);padding:8px;border-radius:var(--radius-sm);overflow-x:auto;margin:0.4em 0;font-size:0.85rem}
+  .post-text a,
+  .ql-editor a{color:var(--color-link);text-decoration:underline}
+  .post-text .ql-align-center,
+  .ql-editor .ql-align-center{ text-align:center }
+  .post-text .ql-align-right,
+  .ql-editor .ql-align-right{ text-align:right }
+  .post-text .ql-align-justify,
+  .ql-editor .ql-align-justify{ text-align:justify }
+  .post-text .ql-align-center ul,
+  .post-text .ql-align-center ol,
+  .ql-editor .ql-align-center ul,
+  .ql-editor .ql-align-center ol{ padding-left:0; list-style-position:inside }
+  .post-text .ql-align-center li,
+  .ql-editor .ql-align-center li{ text-align:center }
+  .post-text .ql-align-right ul,
+  .post-text .ql-align-right ol,
+  .ql-editor .ql-align-right ul,
+  .ql-editor .ql-align-right ol{ padding-left:0; list-style-position:inside }
+  .post-text .ql-align-right li,
+  .ql-editor .ql-align-right li{ text-align:right }
+  .post-url{display:block;margin-bottom:6px;word-break:break-all;color:var(--color-link);font-size:0.8rem;text-decoration:none}
+  .post-url:hover{text-decoration:underline}
+  .post-image-container{flex:0 0 auto;margin-left:10px;text-align:center;max-width:35%}
+  .post-image{max-width:100%;max-height:150px;cursor:pointer;border-radius:var(--radius-sm);will-change:opacity}
+  .post-image:hover{opacity:0.9}
+  
+  .post-actions{display:flex;justify-content:flex-end;gap:var(--space-1);margin-top:var(--space-2)}
+  
+  /* ページネーション */
+  #pagination{display:flex;justify-content:space-between;align-items:center;margin:var(--space-3) 0;padding:var(--space-2) var(--space-3);background-color:var(--color-surface);border-radius:var(--radius-md);border:1px solid var(--color-border);box-shadow:var(--shadow-sm)}
+  #page-info{font-size:0.75rem;color:var(--color-muted)}
+  
+  /* 投稿フォーム */
+  #post-form-container{background-color:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-lg);padding:var(--space-4);margin-bottom:var(--space-3);box-shadow:var(--shadow-sm);position:relative;overflow:hidden}
+  #post-form-container::before{content:'';position:absolute;top:0;left:0;right:0;height:4px;background:linear-gradient(90deg,var(--color-primary),#8ab4f8)}
+  .post-form-header{display:flex;flex-direction:column;gap:4px;margin-bottom:var(--space-3)}
+  .post-form-desc{font-size:0.78rem;color:var(--color-muted)}
+  #auth-status{display:flex;justify-content:flex-end;align-items:center;gap:var(--space-2);margin-bottom:var(--space-3)}
+  #logged-in-status{font-size:0.6rem;color:var(--color-muted);vertical-align:middle}
+  
+  /* Quillエディタのスタイル調整 */
+  .ql-toolbar.ql-snow{border-top-left-radius:var(--radius-sm);border-top-right-radius:var(--radius-sm);border-color:var(--color-border);background-color:var(--color-subtle);padding:var(--space-1)}
+.ql-container.ql-snow{border-bottom-left-radius:var(--radius-sm);border-bottom-right-radius:var(--radius-sm);border-color:var(--color-border);font-size:0.85rem;font-family:var(--font-sans);resize:vertical;overflow:auto}
+.ql-editor{min-height:100px;overflow:auto}
+  .ql-editor.ql-blank::before{color:#9aa0a6;font-style:italic;font-size:0.85rem}
+
+  .toolbar-enhanced{display:flex;flex-wrap:wrap;gap:6px 8px}
+  .toolbar-enhanced .toolbar-group{display:inline-flex;align-items:center;gap:4px;padding-right:6px;margin-right:2px;border-right:1px solid var(--color-border)}
+  .toolbar-enhanced .toolbar-group:last-child{border-right:none}
+  .toolbar-enhanced .toolbar-group-insert{background:rgba(26,115,232,0.06);padding:4px 6px;border-radius:999px}
+  .toolbar-enhanced .toolbar-group-insert .ql-formats{border-right:none}
+  .toolbar-enhanced .toolbar-pill{display:inline-flex;align-items:center;justify-content:center;padding:4px 8px;border-radius:999px;background:var(--color-subtle);color:var(--color-text);border:1px solid rgba(0,0,0,0.04)}
+  .toolbar-enhanced .toolbar-pill:hover{background:#e8eaed}
+  .toolbar-enhanced .toolbar-pill .pill-icon svg{width:14px;height:14px;display:block}
+  .toolbar-enhanced .pill-link{background:rgba(26,115,232,0.12);color:#1a73e8}
+  .toolbar-enhanced .pill-image{background:rgba(30,142,62,0.12);color:#1e8e3e}
+  .toolbar-enhanced .pill-video{background:rgba(217,48,37,0.12);color:#d93025}
+  .toolbar-enhanced .pill-generate{background:rgba(103,58,183,0.12);color:#673ab7}
+  .toolbar-enhanced .pill-file{background:rgba(95,99,104,0.12);color:#5f6368}
+  
+  /* カスタムファイルボタンのスタイル - より目立つデザイン */
+  .ql-file{display:none !important}
+  
+  #post-form-container h2{font-size:1rem;color:var(--color-text)}
+  .form-group{margin-bottom:var(--space-3)}
+  label{display:flex;align-items:center;gap:6px;margin-bottom:var(--space-1);font-weight:600;font-size:0.8rem;color:var(--color-text)}
+  .form-control{width:100%;padding:7px 10px;border:1px solid var(--color-border);border-radius:var(--radius-sm);font-size:0.85rem;font-family:var(--font-sans);will-change:border-color,box-shadow}
+  .form-control:focus{border-color:var(--color-link);outline:0;box-shadow:0 0 0 0.15rem rgba(26,115,232,0.18)}
+  textarea.form-control{resize:vertical;min-height:80px}
+  .image-preview{max-width:100%;max-height:150px;margin-top:var(--space-2);border-radius:var(--radius-sm)}
+  .form-help{margin-top:6px;font-size:0.75rem;color:var(--color-muted)}
+  .required-badge{display:inline-flex;align-items:center;justify-content:center;min-width:36px;padding:2px 6px;border-radius:999px;background:var(--color-subtle);color:var(--color-secondary);font-size:0.68rem;font-weight:600}
+  .form-actions{display:flex;justify-content:flex-end;gap:var(--space-2);margin-top:var(--space-2)}
+  .form-group:focus-within label{color:var(--color-link)}
+  .form-group:focus-within .ql-toolbar.ql-snow,
+  .form-group:focus-within .ql-container.ql-snow{border-color:var(--color-link);box-shadow:0 0 0 0.12rem rgba(26,115,232,0.12)}
+  
+  /* ボタン - サイズを60%に縮小 */
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:6px 12px;min-height:30px;background-color:var(--color-primary);color:white;border:none;border-radius:var(--radius-sm);cursor:pointer;font-size:0.78rem;font-weight:500;font-family:var(--font-sans);will-change:background-color;line-height:1.2;transition:background-color 0.15s ease}
+  .btn:hover{background-color:var(--color-primary-hover)}
+  .btn:active{background-color:var(--color-primary-active)}
+  .btn:disabled{background-color:#9aa0a6;cursor:not-allowed}
+  .btn-edit{background-color:var(--color-secondary)}
+  .btn-edit:hover{background-color:var(--color-secondary-hover)}
+  .btn-delete{background-color:var(--color-danger)}
+  .btn-delete:hover{background-color:var(--color-danger-hover)}
+  .btn-danger{background-color:var(--color-danger)}
+  .btn-danger:hover{background-color:var(--color-danger-hover)}
+  .btn-secondary{background-color:var(--color-subtle);color:var(--color-secondary)}
+  .btn-secondary:hover{background-color:#e8eaed}
+  .btn-secondary:active{background-color:#dadce0}
+  .btn-primary{background-color:var(--color-primary)}
+  .btn-primary:hover{background-color:var(--color-primary-hover)}
+  .btn-primary:active{background-color:var(--color-primary-active)}
+  .btn-cta{padding:8px 14px;font-size:0.82rem;min-height:34px;box-shadow:0 2px 4px rgba(26,115,232,0.25)}
+  .btn-cta:disabled{box-shadow:none}
+  .btn-cta-icon{font-size:0.9rem}
+  
+  /* モーダル */
+  .modal{display:none;position:fixed;z-index:1000;left:0;top:0;width:100%;height:100%;background-color:rgba(32,33,36,0.45);backdrop-filter:blur(3px)}
+  .modal-content{background-color:var(--color-surface);margin:5% auto;padding:var(--space-4);border-radius:var(--radius-lg);width:90%;max-width:450px;max-height:85vh;overflow-y:auto;box-shadow:var(--shadow-lg);position:relative}
+  .close{position:absolute;right:15px;top:10px;font-size:1.5rem;font-weight:bold;cursor:pointer;color:#9aa0a6;will-change:color}
+  .close:hover{color:var(--color-muted)}
+  #edit-modal .modal-content{width:min(920px, 96vw);max-width:920px;max-height:92vh;margin:3% auto}
+  #edit-modal .ql-container .ql-editor{min-height:260px}
+  
+  /* 通知 */
+  .notification{display:none;position:fixed;bottom:15px;right:15px;padding:8px 14px;border-radius:var(--radius-sm);color:white;font-size:0.8rem;z-index:1001;box-shadow:var(--shadow-md);animation:fadeIn 0.3s}
+  @keyframes fadeIn{from{opacity:0;transform:translateY(15px)}to{opacity:1;transform:translateY(0)}}
+  .notification.success{background-color:var(--color-success)}
+  .notification.error{background-color:var(--color-danger)}
+  .error-message{color:var(--color-danger);font-size:0.8rem;margin-top:4px;display:none}
+  
+  /* スピナーアニメーション */
+  .spinner{display:inline-block;width:14px;height:14px;border:2px solid rgba(255,255,255,0.3);border-radius:50%;border-top-color:#fff;animation:spin 0.8s ease-in-out infinite;margin-right:6px;vertical-align:middle}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  
+  /* レスポンシブルな画像と動画 */
+  img,video{max-width:100% !important;height:auto;display:block;margin:var(--space-3) auto;box-shadow:var(--shadow-sm);border-radius:var(--radius-sm);will-change:box-shadow}
+  img:hover,video:hover{box-shadow:var(--shadow-md)}
+  
+  /* レスポンシブルなiframe */
+  iframe{width:100% !important;max-width:100% !important;aspect-ratio:16/9;height:auto;display:block;margin:var(--space-3) auto;border:none}
+  .ql-editor img,.ql-editor video{max-width:100% !important;height:auto;display:block;margin:var(--space-3) auto;box-shadow:var(--shadow-sm);border-radius:var(--radius-sm)}
+  .ql-editor iframe{width:100% !important;max-width:100% !important;aspect-ratio:16/9;height:auto;display:block;margin:var(--space-3) auto;border:none}
+
+  .video-modal-backdrop{position:fixed;inset:0;background:rgba(32,33,36,0.45);display:flex;align-items:center;justify-content:center;z-index:4000;backdrop-filter:blur(2px);padding:var(--space-4)}
+  .video-modal-card{background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-lg);width:min(520px,100%);padding:var(--space-4);box-shadow:var(--shadow-lg)}
+  .video-modal-title{font-size:1rem;font-weight:600;color:var(--color-text);margin-bottom:var(--space-2)}
+  .video-modal-label{display:block;font-size:0.8rem;color:var(--color-muted);margin-bottom:var(--space-1)}
+  .video-modal-input{width:100%;padding:8px 10px;border:1px solid var(--color-border);border-radius:var(--radius-md);font-size:0.9rem;font-family:inherit}
+  .video-modal-input:focus{outline:none;border-color:var(--color-link);box-shadow:0 0 0 2px rgba(26,115,232,0.15)}
+  .video-modal-actions{display:flex;justify-content:flex-end;gap:var(--space-2);margin-top:var(--space-3)}
+  .video-modal-hint{margin-top:var(--space-2);font-size:0.75rem;color:var(--color-muted)}
+  
+  /* レスポンシブデザイン */
+  @media (min-width:768px){
+    .container{max-width:100%}
+    
+    /* 小さい画面では画像を下に表示 */
+    .post-content{flex-direction:column}
+    .post-image-container{margin-left:0;margin-top:10px;max-width:100%}
+    .post-image{max-width:100%}
+  }
+  
+  @media (min-width:1024px){
+    .container{width:100%;max-width:1000px;margin:0 auto;box-shadow:none;border-radius:0;padding:0 12px 16px 12px;background-color:transparent}
+    body{padding:0}
+  }
+  
+  /* 小さい画面用の調整 */
+  @media (max-width:480px){
+    .container{padding:10px}
+    .post{padding:10px}
+    .post-header{flex-direction:column}
+    .post-date{margin-top:3px}
+    #pagination{padding:6px}
+    #post-form-container{padding:12px}
+    
+    /* 小さい画面でのQuillエディタ調整 */
+    .ql-toolbar.ql-snow{padding:3px}
+    .ql-toolbar.ql-snow .ql-formats{margin-right:3px}
+    .ql-formats button{width:24px;height:24px}
+  }
+     /* Adjust Quill link tooltip positioning to be centered */
+     .ql-tooltip {
+         left: 50% !important;
+         top: 50% !important;
+         transform: translate(-50%, -50%) !important;
+         max-width: none;
+     }
+     /* Adjust video modal to remain on top so that the video link insertion window is not hidden */
+     #video-modal {
+         z-index: 3000 !important;
+     }
+     #video-modal-edit {
+         z-index: 9000 !important;
+     }
+     /* Center Quill tooltip modals (for link insertion and others) */
+     .ql-tooltip {
+         left: 50% !important;
+         top: 50% !important;
+         transform: translate(-50%, -50%) !important;
+         max-width: none;
+     }
+     /* Center login modal content */
+     #login-modal .modal-content {
+        position: absolute;
+        top: 50% !important;
+        left: 50% !important;
+        transform: translate(-50%, -50%) !important;
+     }
+  </style>
+  </style>
