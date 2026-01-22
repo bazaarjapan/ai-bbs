@@ -985,8 +985,18 @@
     margin-bottom: var(--space-1)
   }
 
+  .ql-container.ql-snow .ql-tooltip.ql-editing {
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    column-gap: var(--space-2);
+    row-gap: var(--space-2);
+    min-width: 320px;
+    width: min(420px, 92vw);
+  }
+
   .ql-container.ql-snow .ql-tooltip.ql-editing::before {
-    content: "リンクURLを挿入してください。"
+    content: "リンクURLを挿入してください。";
+    grid-column: 1 / -1;
   }
 
   .ql-tooltip input[type="text"] {
@@ -1002,6 +1012,12 @@
     outline: none;
     border-color: var(--color-link);
     box-shadow: 0 0 0 2px rgba(26, 115, 232, 0.15)
+  }
+
+  .ql-container.ql-snow .ql-tooltip.ql-editing input[type="text"] {
+    display: block;
+    grid-column: 1 / -1;
+    margin: 0;
   }
 
   .ql-tooltip .ql-preview {
@@ -1060,6 +1076,26 @@
 
   .ql-container.ql-snow .ql-tooltip.ql-editing a.ql-remove {
     display: inline-flex;
+  }
+
+  .ql-container.ql-snow .ql-tooltip.ql-editing a.ql-action,
+  .ql-container.ql-snow .ql-tooltip.ql-editing a.ql-remove {
+    justify-self: end;
+  }
+
+  .ql-container.ql-snow .ql-tooltip:not(.ql-editing) a.ql-action,
+  .ql-container.ql-snow .ql-tooltip:not(.ql-editing) a.ql-remove {
+    font-size: 0;
+  }
+
+  .ql-container.ql-snow .ql-tooltip:not(.ql-editing) a.ql-action::after {
+    content: "修正";
+    font-size: 0.78rem;
+  }
+
+  .ql-container.ql-snow .ql-tooltip:not(.ql-editing) a.ql-remove::before {
+    content: "削除";
+    font-size: 0.78rem;
   }
 
   /* レスポンシブデザイン */
